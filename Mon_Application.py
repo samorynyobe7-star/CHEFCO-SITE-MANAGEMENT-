@@ -1,6 +1,7 @@
 import sqlite3
 import pandas as pd
 import streamlit as st
+import altair as alt
 import base64
 import os
 
@@ -25,7 +26,7 @@ POSTES_BTP = [
     "Chef d'Équipe",
     
     # Études & Métré
-    "Mreur / Economiste de la Construction",
+    "Métreur / Économiste de la Construction",
     "Projeteur / Dessinateur BTP",
     "BIM Manager / Coordinateur BIM",
     
@@ -43,12 +44,12 @@ POSTES_BTP = [
     "Chef Maçon / Maçon",
     "Coffreur / Bancheur",
     "Ferrailleur",
-    "Pisteuret / Terrassier",
+    "Pisteur / Terrassier",
     "Électricien BTP",
     "Plombier / Tuyauteur",
     "Sondeur / Forreur",
     "Soudure / Chaudronnier",
-    "Pintre / Applicateur de Revêtement",
+    "Peintre / Applicateur de Revêtement",
     "Échafaudeur",
     
     # Engins & Logistique
@@ -133,7 +134,7 @@ def inject_custom_css():
 inject_custom_css()
 
 # ---------------------------------------------------------
-# 5. INITIALISATION DB & MIGRATION AUTOMATIQUE
+# 5. INITIALISATION DB
 # ---------------------------------------------------------
 def get_connection():
     return sqlite3.connect("chantier_wouri.db", check_same_thread=False)
@@ -142,7 +143,6 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Table des Utilisateurs du système
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS utilisateurs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,7 +155,6 @@ def init_db():
         )
     """)
     
-    # Table des Chantiers
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chantiers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,54 +168,68 @@ def init_db():
         )
     """)
     
-    # Tables du système
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS employes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chantier_id INTEGER,
             nom TEXT NOT NULL,
             poste TEXT NOT NULL,
-            salaire_mensuel REAL NOT NULL
+            salaire_mensuel REAL NOT NULL,
+            FOREIGN KEY(chantier_id) REFERENCES chantiers(id)
         )
     """)
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS engins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chantier_id INTEGER,
             nom_engin TEXT NOT NULL,
             immatriculation TEXT UNIQUE NOT NULL,
-            cout_carburant REAL DEFAULT 0
+            cout_carburant REAL DEFAULT 0,
+            FOREIGN KEY(chantier_id) REFERENCES chantiers(id)
         )
     """)
     
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS stocks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chantier_id INTEGER,
             designation TEXT NOT NULL,
             quantite REAL NOT NULL,
             seuil_alerte REAL NOT NULL,
-            cout_unitaire REAL NOT NULL
+            cout_unitaire REAL NOT NULL,
+            FOREIGN KEY(chantier_id) REFERENCES chantiers(id)
         )
     """)
     
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS presences (
+        CREATE TABLE IF NOT EXISTS journal_chantier (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            employe_id INTEGER,
-            date_presence DATE,
-            statut TEXT,
-            FOREIGN KEY(employe_id) REFERENCES employes(id)
+            chantier_id INTEGER,
+            date_jour DATE,
+            meteo TEXT,
+            hauteur_pluie_mm REAL DEFAULT 0,
+            incidents TEXT,
+            travaux_realises TEXT,
+            FOREIGN KEY(chantier_id) REFERENCES chantiers(id)
         )
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS labo_beton (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chantier_id INTEGER,
+            date_essai DATE,
+            element_coule TEXT,
+            slump_test_mm REAL,
+            resistance_7j REAL,
+            resistance_28j REAL,
+            statut TEXT,
+            FOREIGN KEY(chantier_id) REFERENCES chantiers(id)
+        )
+    """)
+
     conn.commit()
-
-    # Migration chantier_id
-    for table in ["employes", "engins", "stocks"]:
-        cursor.execute(f"PRAGMA table_info({table})")
-        columns = [col[1] for col in cursor.fetchall()]
-        if "chantier_id" not in columns:
-            cursor.execute(f"ALTER TABLE {table} ADD COLUMN chantier_id INTEGER REFERENCES chantiers(id)")
-            conn.commit()
-
     conn.close()
 
 init_db()
@@ -235,7 +248,6 @@ if "user_role" not in st.session_state:
 # 7. AUTHENTIFICATION & CREATION DE COMPTE
 # ---------------------------------------------------------
 if not st.session_state.authenticated:
-    
     logo_html = f'<img src="data:image/jpeg;base64,{logo_base64}" class="btp-logo-img">' if logo_base64 else '<span class="btp-header-title">CHEFCO</span>'
     
     st.markdown(
@@ -255,7 +267,7 @@ if not st.session_state.authenticated:
             <div style="max-width: 1200px; margin: 0 auto;">
                 <div class="hero-subtitle">CHEFCO - CONSTRUCTION SITE MANAGEMENT</div>
                 <div class="hero-title">Du cœur à l'ouvrage</div>
-                <p style="font-size: 16px; opacity: 0.9;">Plateforme complète de gestion, suivi de projets BTP, ressources et budget.</p>
+                <p style="font-size: 16px; opacity: 0.9;">Plateforme complète de gestion, suivi de projets BTP, ressources, laboratoire et budget.</p>
             </div>
         </div>
         """,
@@ -268,7 +280,6 @@ if not st.session_state.authenticated:
     with col_c:
         tab_login, tab_signup = st.tabs(["🔑 Se Connecter", "📝 Créer un Compte"])
         
-        # --- ONGLET 1 : CONNEXION ---
         with tab_login:
             st.subheader("Connexion à votre espace")
             with st.form("form_login"):
@@ -296,11 +307,10 @@ if not st.session_state.authenticated:
                             st.success(f"Bienvenue {st.session_state.username}")
                             st.rerun()
                         else:
-                            st.error("Identifiants incorrects ou compte inexistant. Veuillez créer un compte.")
+                            st.error("Identifiants incorrects ou compte inexistant.")
                     else:
                         st.warning("Veuillez remplir tous les champs.")
 
-        # --- ONGLET 2 : CRÉATION DE COMPTE ---
         with tab_signup:
             st.subheader("Créer un nouveau compte")
             with st.form("form_signup", clear_on_submit=True):
@@ -326,7 +336,6 @@ if not st.session_state.authenticated:
                     else:
                         conn = get_connection()
                         cursor = conn.cursor()
-                        # Vérification d'existence
                         cursor.execute("SELECT id FROM utilisateurs WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)", (nom_new, prenom_new))
                         if cursor.fetchone():
                             st.error("Un utilisateur avec ce Nom et Prénom existe déjà.")
@@ -338,7 +347,7 @@ if not st.session_state.authenticated:
                             """, (nom_new, prenom_new, sexe_new, age_new, poste_new, pass_new))
                             conn.commit()
                             conn.close()
-                            st.success("Compte créé avec succès ! Vous pouvez maintenant vous connecter dans l'onglet 'Se Connecter'.")
+                            st.success("Compte créé avec succès ! Connectez-vous.")
 
 # ---------------------------------------------------------
 # 8. APPLICATION PRINCIPALE CONNECTÉE
@@ -354,7 +363,6 @@ else:
         
     st.sidebar.markdown("---")
     
-    # Sélection du chantier actif
     df_chantiers = pd.read_sql_query("SELECT id, nom_chantier FROM chantiers", conn)
     
     if not df_chantiers.empty:
@@ -372,7 +380,9 @@ else:
         "🏗️ Gestion des Chantiers", 
         "👷 Employés & Présences", 
         "🚜 Engins & Carburant", 
-        "📦 Stocks & Matériaux"
+        "📦 Stocks & Matériaux",
+        "🧪 Labo & Contrôle Qualité",
+        "📝 Journal de Chantier (Météo)"
     ])
 
     st.markdown('<div class="main-content">', unsafe_allow_html=True)
@@ -385,7 +395,7 @@ else:
             st.subheader("➕ Ajouter un nouveau projet / chantier")
             col1, col2 = st.columns(2)
             
-            nom_c = col1.text_input("Nom du Chantier (ex: Remblai Fleuve Wouri)")
+            nom_c = col1.text_input("Nom du Chantier (ex: Aménagement Digue Wouri)")
             loc_c = col2.text_input("Localisation / Ville")
             maitre_c = col1.text_input("Maître d'Ouvrage / Client")
             budget_c = col2.number_input("Budget Total Alloué (FCFA)", min_value=0.0, step=100000.0)
@@ -416,8 +426,18 @@ else:
             FROM chantiers
         """, conn)
         st.dataframe(df_all_chantiers, use_container_width=True)
+        
+        # Diagramme de répartition des budgets par chantier
+        if not df_all_chantiers.empty:
+            st.markdown("### 📊 Analyse des Budgets par Chantier")
+            chart_chantiers = alt.Chart(df_all_chantiers).mark_bar(color="#0b5fa5").encode(
+                x=alt.X('Nom du Chantier:N', sort='-y'),
+                y=alt.Y('Budget (FCFA):Q', title='Budget (FCFA)'),
+                tooltip=['Nom du Chantier', 'Budget (FCFA)', 'Statut']
+            ).properties(height=300)
+            st.altair_chart(chart_chantiers, use_container_width=True)
 
-    # 2. TABLEAU DE BORD
+    # 2. TABLEAU DE BORD (Avec Diagramme Circulaire et Courbe)
     elif navigation == "📊 Tableau de Bord":
         st.header(f"📊 Tableau de Bord - {chantier_selected_name}")
         
@@ -444,6 +464,42 @@ else:
             col2.metric("📉 Dépenses Totales", f"{cout_global:,.0f} FCFA")
             col3.metric("💵 Solde Budget", f"{solde_restant:,.0f} FCFA", delta_color="normal" if solde_restant >= 0 else "inverse")
             col4.metric("👷 Effectif Actif", f"{len(df_emp)} Employés")
+
+            st.markdown("---")
+            
+            # --- DIAGRAMMES DU TABLEAU DE BORD ---
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                st.subheader("🍩 Répartition Circulaire des Dépenses")
+                df_depenses = pd.DataFrame({
+                    'Catégorie': ['Salaires Personnel', 'Carburant Engins', 'Matériaux Stock'],
+                    'Montant': [total_salaires, total_carburant, total_materiaux]
+                })
+                if df_depenses['Montant'].sum() > 0:
+                    # Diagramme circulaire (Donut chart)
+                    pie_chart = alt.Chart(df_depenses).mark_arc(innerRadius=60).encode(
+                        theta=alt.Theta(field="Montant", type="quantitative"),
+                        color=alt.Color(field="Catégorie", type="nominal", scale=alt.Scale(scheme='tableau10')),
+                        tooltip=['Catégorie', alt.Tooltip('Montant:Q', format=',.0f')]
+                    ).properties(height=300)
+                    st.altair_chart(pie_chart, use_container_width=True)
+                else:
+                    st.info("Aucune dépense enregistrée pour afficher le graphique circulaire.")
+
+            with col_chart2:
+                st.subheader("📈 Courbe d'Évolution de la Pluviométrie")
+                df_pluie = pd.read_sql_query("SELECT date_jour, hauteur_pluie_mm FROM journal_chantier WHERE chantier_id = ? ORDER BY date_jour", conn, params=(chantier_id,))
+                if not df_pluie.empty:
+                    # Courbe (Line chart)
+                    line_chart = alt.Chart(df_pluie).mark_line(point=True, color="#f39c12").encode(
+                        x=alt.X('date_jour:T', title='Date'),
+                        y=alt.Y('hauteur_pluie_mm:Q', title='Hauteur Pluie (mm)'),
+                        tooltip=['date_jour', 'hauteur_pluie_mm']
+                    ).properties(height=300)
+                    st.altair_chart(line_chart, use_container_width=True)
+                else:
+                    st.info("Aucune donnée météo enregistrée pour tracer la courbe.")
         else:
             st.warning("Veuillez créer un chantier dans le menu 'Gestion des Chantiers'.")
 
@@ -468,8 +524,17 @@ else:
 
             df_emp = pd.read_sql_query("SELECT id AS ID, nom AS Nom, poste AS Poste, salaire_mensuel AS 'Salaire (FCFA)' FROM employes WHERE chantier_id = ?", conn, params=(chantier_id,))
             st.dataframe(df_emp, use_container_width=True)
+
+            if not df_emp.empty:
+                st.markdown("### 📊 Répartition des Salaires par Poste")
+                chart_emp = alt.Chart(df_emp).mark_bar(color="#1e3c72").encode(
+    x=alt.X('Poste:N', sort='-y'),
+    y=alt.Y('sum(Salaire (FCFA)):Q', title='Total Salaire (FCFA)'),
+    tooltip=['Poste', alt.Tooltip('sum(Salaire (FCFA)):Q', format=',.0f')]
+).properties(height=280)
+                st.altair_chart(chart_emp, use_container_width=True)
         else:
-            st.warning("Veuillez d'abord sélectionner ou créer un chantier dans 'Gestion des Chantiers'.")
+            st.warning("Veuillez sélectionner un chantier.")
 
     # 4. ENGINS
     elif navigation == "🚜 Engins & Carburant":
@@ -494,8 +559,17 @@ else:
 
             df_eng = pd.read_sql_query("SELECT id AS ID, nom_engin AS Engin, immatriculation AS Immat, cout_carburant AS 'Carburant (FCFA)' FROM engins WHERE chantier_id = ?", conn, params=(chantier_id,))
             st.dataframe(df_eng, use_container_width=True)
+
+            if not df_eng.empty:
+                st.markdown("### 📊 Coût du Carburant par Engin")
+                chart_eng = alt.Chart(df_eng).mark_bar(color="#e67e22").encode(
+                    x=alt.X('Engin:N', sort='-y'),
+                    y=alt.Y('Carburant (FCFA):Q'),
+                    tooltip=['Engin', 'Immat', alt.Tooltip('Carburant (FCFA):Q', format=',.0f')]
+                ).properties(height=280)
+                st.altair_chart(chart_eng, use_container_width=True)
         else:
-            st.warning("Veuillez d'abord sélectionner ou créer un chantier.")
+            st.warning("Veuillez sélectionner un chantier.")
 
     # 5. STOCKS
     elif navigation == "📦 Stocks & Matériaux":
@@ -519,8 +593,106 @@ else:
 
             df_st = pd.read_sql_query("SELECT id AS ID, designation AS Matériau, quantite AS Quantité, seuil_alerte AS 'Seuil Alerte', cout_unitaire AS 'PU (FCFA)' FROM stocks WHERE chantier_id = ?", conn, params=(chantier_id,))
             st.dataframe(df_st, use_container_width=True)
+
+            if not df_st.empty:
+                st.markdown("### 📊 Niveaux des Stocks Actuels")
+                chart_st = alt.Chart(df_st).mark_bar(color="#27ae60").encode(
+                    x=alt.X('Matériau:N', sort='-y'),
+                    y=alt.Y('Quantité:Q'),
+                    tooltip=['Matériau', 'Quantité', 'Seuil Alerte']
+                ).properties(height=280)
+                st.altair_chart(chart_st, use_container_width=True)
         else:
-            st.warning("Veuillez d'abord sélectionner ou créer un chantier.")
+            st.warning("Veuillez sélectionner un chantier.")
+
+    # 6. LABO & CONTRÔLE QUALITÉ
+    elif navigation == "🧪 Labo & Contrôle Qualité":
+        st.header(f"🧪 Suivi Laboratoire & Béton : {chantier_selected_name}")
+        
+        if chantier_id:
+            with st.form("form_labo", clear_on_submit=True):
+                col1, col2, col3 = st.columns(3)
+                date_e = col1.date_input("Date de l'essai / coulage")
+                element = col2.text_input("Élément concerné (ex: Radier Semelle S1)")
+                slump = col3.number_input("Affaissement Cône d'Abrams (Slump en mm)", min_value=0.0, value=120.0)
+                
+                col4, col5, col6 = st.columns(3)
+                res_7 = col4.number_input("Résist. 7j (MPa)", min_value=0.0, value=0.0)
+                res_28 = col5.number_input("Résist. 28j (MPa)", min_value=0.0, value=0.0)
+                statut_qualite = col6.selectbox("Validation", ["Conforme", "Non Conforme", "En attente 28j"])
+                
+                if st.form_submit_button("Enregistrer les données labo"):
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT INTO labo_beton (chantier_id, date_essai, element_coule, slump_test_mm, resistance_7j, resistance_28j, statut)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (chantier_id, str(date_e), element, slump, res_7, res_28, statut_qualite))
+                    conn.commit()
+                    st.success("Résultat de laboratoire enregistré !")
+                    st.rerun()
+
+            df_labo = pd.read_sql_query("""
+                SELECT id AS ID, date_essai AS Date, element_coule AS Élément, 
+                       slump_test_mm AS 'Slump (mm)', resistance_7j AS 'R 7j (MPa)', 
+                       resistance_28j AS 'R 28j (MPa)', statut AS Statut 
+                FROM labo_beton WHERE chantier_id = ?
+            """, conn, params=(chantier_id,))
+            st.dataframe(df_labo, use_container_width=True)
+
+            if not df_labo.empty:
+                st.markdown("### 📊 Évolution des Résistances du Béton (MPa)")
+                df_melted = df_labo.melt(id_vars=['Élément'], value_vars=['R 7j (MPa)', 'R 28j (MPa)'], var_name='Échéance', value_name='Résistance (MPa)')
+                chart_labo = alt.Chart(df_melted).mark_bar().encode(
+                    x=alt.X('Élément:N'),
+                    y=alt.Y('Résistance (MPa):Q'),
+                    color='Échéance:N',
+                    tooltip=['Élément', 'Échéance', 'Résistance (MPa)']
+                ).properties(height=280)
+                st.altair_chart(chart_labo, use_container_width=True)
+        else:
+            st.warning("Veuillez sélectionner un chantier.")
+
+    # 7. JOURNAL DE CHANTIER (MÉTÉO)
+    elif navigation == "📝 Journal de Chantier (Météo)":
+        st.header(f"📝 Journal Quotidien & Météo : {chantier_selected_name}")
+        
+        if chantier_id:
+            with st.form("form_journal", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                date_j = col1.date_input("Date du rapport journalier")
+                meteo = col2.selectbox("Conditions Météo", ["Ensoleillé", "Nuageux", "Pluvieux", "Orageux"])
+                
+                pluie = st.number_input("Hauteur de pluie estimée (mm)", min_value=0.0, step=1.0)
+                travaux = st.text_area("Travaux réalisés dans la journée")
+                incidents = st.text_area("Incidents ou arrêts de chantier notables")
+                
+                if st.form_submit_button("Valider le rapport journalier"):
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT INTO journal_chantier (chantier_id, date_jour, meteo, hauteur_pluie_mm, incidents, travaux_realises)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (chantier_id, str(date_j), meteo, pluie, incidents, travaux))
+                    conn.commit()
+                    st.success("Rapport journalier enregistré avec succès !")
+                    st.rerun()
+
+            df_jour = pd.read_sql_query("""
+                SELECT date_jour AS Date, meteo AS Météo, hauteur_pluie_mm AS 'Pluie (mm)', 
+                       travaux_realises AS 'Travaux Réalisés', incidents AS Incidents 
+                FROM journal_chantier WHERE chantier_id = ?
+            """, conn, params=(chantier_id,))
+            st.dataframe(df_jour, use_container_width=True)
+
+            if not df_jour.empty:
+                st.markdown("### 📊 Historique de la Pluviométrie Journalière")
+                chart_meteo = alt.Chart(df_jour).mark_line(point=True, color="#2980b9").encode(
+                    x=alt.X('Date:T'),
+                    y=alt.Y('Pluie (mm):Q'),
+                    tooltip=['Date', 'Météo', 'Pluie (mm)']
+                ).properties(height=280)
+                st.altair_chart(chart_meteo, use_container_width=True)
+        else:
+            st.warning("Veuillez sélectionner un chantier.")
 
     st.markdown('</div>', unsafe_allow_html=True)
     conn.close()
