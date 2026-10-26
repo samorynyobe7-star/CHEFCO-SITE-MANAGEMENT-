@@ -1,7 +1,6 @@
 import sqlite3
 import pandas as pd
 import streamlit as st
-import altair as alt
 import base64
 import os
 
@@ -73,7 +72,7 @@ LOGO_PATH = "IMG-20261008-WA7100.jpg"
 logo_base64 = get_base64_of_bin_file(LOGO_PATH)
 
 # ---------------------------------------------------------
-# 4. CSS PERSONNALISÉ
+# 4. CSS DESIGN CORRIGÉ & LISIBLE
 # ---------------------------------------------------------
 def inject_custom_css():
     st.markdown(
@@ -82,7 +81,7 @@ def inject_custom_css():
         header {{visibility: hidden;}}
         .block-container {{
             padding-top: 0rem !important;
-            padding-bottom: 2rem !important;
+            padding-bottom: 3rem !important;
             padding-left: 0rem !important;
             padding-right: 0rem !important;
             max-width: 100% !important;
@@ -94,6 +93,7 @@ def inject_custom_css():
             justify-content: space-between;
             padding: 15px 40px;
             box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+            border-bottom: 4px solid #f39c12;
         }}
         .btp-logo-img {{
             height: 50px;
@@ -111,7 +111,6 @@ def inject_custom_css():
             background: linear-gradient(135deg, #0b5fa5 0%, #1e3c72 100%);
             padding: 40px 40px;
             color: white;
-            border-bottom: 4px solid #f39c12;
         }}
         .hero-title {{
             font-size: 36px;
@@ -125,6 +124,23 @@ def inject_custom_css():
         }}
         .main-content {{
             padding: 20px 40px;
+        }}
+        .auth-card {{
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            border: 1px solid #e2e8f0;
+            margin-top: 20px;
+        }}
+        .app-header-bar {{
+            background-color: #0b5fa5;
+            color: white;
+            padding: 15px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 4px solid #f39c12;
         }}
         </style>
         """,
@@ -148,10 +164,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL,
             prenom TEXT NOT NULL,
-            sexe TEXT NOT NULL,
-            age INTEGER NOT NULL,
-            poste TEXT NOT NULL,
-            mot_de_passe TEXT NOT NULL
+            poste TEXT NOT NULL
         )
     """)
     
@@ -203,6 +216,16 @@ def init_db():
     """)
     
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS presences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employe_id INTEGER,
+            date_presence DATE,
+            statut TEXT,
+            FOREIGN KEY(employe_id) REFERENCES employes(id)
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS journal_chantier (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chantier_id INTEGER,
@@ -245,7 +268,7 @@ if "user_role" not in st.session_state:
     st.session_state.user_role = ""
 
 # ---------------------------------------------------------
-# 7. AUTHENTIFICATION & CREATION DE COMPTE
+# 7. PAGE DE CONNEXION LISIBLE ET PROPRE
 # ---------------------------------------------------------
 if not st.session_state.authenticated:
     logo_html = f'<img src="data:image/jpeg;base64,{logo_base64}" class="btp-logo-img">' if logo_base64 else '<span class="btp-header-title">CHEFCO</span>'
@@ -267,87 +290,59 @@ if not st.session_state.authenticated:
             <div style="max-width: 1200px; margin: 0 auto;">
                 <div class="hero-subtitle">CHEFCO - CONSTRUCTION SITE MANAGEMENT</div>
                 <div class="hero-title">Du cœur à l'ouvrage</div>
-                <p style="font-size: 16px; opacity: 0.9;">Plateforme complète de gestion, suivi de projets BTP, ressources, laboratoire et budget.</p>
+                <p style="font-size: 16px; opacity: 0.9;">Plateforme professionnelle de suivi de projets BTP, ressources, laboratoire et budget.</p>
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    st.markdown("<br>", unsafe_allow_html=True)
     col_l, col_c, col_r = st.columns([1, 1.4, 1])
 
     with col_c:
-        tab_login, tab_signup = st.tabs(["🔑 Se Connecter", "📝 Créer un Compte"])
-        
-        with tab_login:
-            st.subheader("Connexion à votre espace")
-            with st.form("form_login"):
-                nom_login = st.text_input("Nom de famille :").strip()
-                prenom_login = st.text_input("Prénom :").strip()
-                pass_login = st.text_input("Mot de passe :", type="password")
-                
-                btn_login = st.form_submit_button("Se Connecter", use_container_width=True)
-                
-                if btn_login:
-                    if nom_login and prenom_login and pass_login:
-                        conn = get_connection()
-                        cursor = conn.cursor()
+        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
+        st.markdown("<h3 style='color: #0f172a; margin-bottom: 20px;'>🔑 Accès à votre espace</h3>", unsafe_allow_html=True)
+        with st.form("form_connexion_simple"):
+            nom_input = st.text_input("Nom de famille :").strip()
+            prenom_input = st.text_input("Prénom :").strip()
+            poste_input = st.selectbox("Votre poste dans le génie civil / BTP :", POSTES_BTP)
+            
+            btn_entrer = st.form_submit_button("Accéder au Chantier", use_container_width=True)
+            
+            if btn_entrer:
+                if nom_input and prenom_input:
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    
+                    cursor.execute("""
+                        SELECT id FROM utilisateurs 
+                        WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)
+                    """, (nom_input, prenom_input))
+                    user_exist = cursor.fetchone()
+                    
+                    if not user_exist:
                         cursor.execute("""
-                            SELECT nom, prenom, poste FROM utilisateurs 
-                            WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?) AND mot_de_passe = ?
-                        """, (nom_login, prenom_login, pass_login))
-                        user = cursor.fetchone()
-                        conn.close()
+                            INSERT INTO utilisateurs (nom, prenom, poste)
+                            VALUES (?, ?, ?)
+                        """, (nom_input, prenom_input, poste_input))
+                        conn.commit()
+                    else:
+                        cursor.execute("""
+                            UPDATE utilisateurs SET poste = ? 
+                            WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)
+                        """, (poste_input, nom_input, prenom_input))
+                        conn.commit()
                         
-                        if user:
-                            st.session_state.authenticated = True
-                            st.session_state.username = f"{user[1]} {user[0]}"
-                            st.session_state.user_role = user[2]
-                            st.success(f"Bienvenue {st.session_state.username}")
-                            st.rerun()
-                        else:
-                            st.error("Identifiants incorrects ou compte inexistant.")
-                    else:
-                        st.warning("Veuillez remplir tous les champs.")
-
-        with tab_signup:
-            st.subheader("Créer un nouveau compte")
-            with st.form("form_signup", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-                nom_new = col1.text_input("Nom :").strip()
-                prenom_new = col2.text_input("Prénom :").strip()
-                
-                col3, col4 = st.columns(2)
-                sexe_new = col3.selectbox("Sexe :", ["Masculin", "Féminin"])
-                age_new = col4.number_input("Âge :", min_value=18, max_value=80, value=25)
-                
-                poste_new = st.selectbox("Poste / Fonction sur le chantier :", POSTES_BTP)
-                pass_new = st.text_input("Créer un Mot de passe :", type="password")
-                pass_confirm = st.text_input("Confirmer le Mot de passe :", type="password")
-                
-                btn_signup = st.form_submit_button("Créer mon compte", use_container_width=True)
-                
-                if btn_signup:
-                    if not nom_new or not prenom_new or not pass_new:
-                        st.error("Veuillez remplir tous les champs obligatoires.")
-                    elif pass_new != pass_confirm:
-                        st.error("Les mots de passe ne correspondent pas.")
-                    else:
-                        conn = get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT id FROM utilisateurs WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)", (nom_new, prenom_new))
-                        if cursor.fetchone():
-                            st.error("Un utilisateur avec ce Nom et Prénom existe déjà.")
-                            conn.close()
-                        else:
-                            cursor.execute("""
-                                INSERT INTO utilisateurs (nom, prenom, sexe, age, poste, mot_de_passe)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            """, (nom_new, prenom_new, sexe_new, age_new, poste_new, pass_new))
-                            conn.commit()
-                            conn.close()
-                            st.success("Compte créé avec succès ! Connectez-vous.")
+                    conn.close()
+                    
+                    st.session_state.authenticated = True
+                    st.session_state.username = f"{prenom_input} {nom_input}"
+                    st.session_state.user_role = poste_input
+                    st.success(f"Bienvenue, {st.session_state.username} !")
+                    st.rerun()
+                else:
+                    st.warning("Veuillez renseigner votre nom et votre prénom.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # 8. APPLICATION PRINCIPALE CONNECTÉE
@@ -355,37 +350,57 @@ if not st.session_state.authenticated:
 else:
     conn = get_connection()
     
-    st.sidebar.markdown(f"👤 **Utilisateur :** {st.session_state.username}")
-    st.sidebar.markdown(f"💼 **Poste :** {st.session_state.user_role}")
-    if st.sidebar.button("Déconnexion"):
-        st.session_state.authenticated = False
-        st.rerun()
-        
-    st.sidebar.markdown("---")
+    logo_html = f'<img src="data:image/jpeg;base64,{logo_base64}" class="btp-logo-img" style="height:35px;" alt="Logo">' if logo_base64 else '<span class="btp-header-title">CHEFCO</span>'
+    
+    st.markdown(
+        f"""
+        <div class="app-header-bar">
+            <div style="display:flex; align-items:center; gap:12px;">
+                {logo_html}
+                <span style="font-size:18px; font-weight:700;">CHEFCO CONSTRUCTION - SUIVI DE CHANTIER</span>
+            </div>
+            <div style="color:white; font-weight:500;">👤 {st.session_state.username} | 💼 {st.session_state.user_role}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<div class="main-content">', unsafe_allow_html=True)
+
+    col_ch, col_btn = st.columns([4, 1])
     
     df_chantiers = pd.read_sql_query("SELECT id, nom_chantier FROM chantiers", conn)
     
     if not df_chantiers.empty:
-        chantier_selected_name = st.sidebar.selectbox("🏗️ **Sélectionner un Chantier :**", df_chantiers["nom_chantier"].tolist())
+        chantier_list = df_chantiers["nom_chantier"].tolist()
+        chantier_selected_name = col_ch.selectbox("🏗️ **Sélectionner un Chantier actif :**", chantier_list)
         chantier_id = int(df_chantiers[df_chantiers["nom_chantier"] == chantier_selected_name]["id"].values[0])
     else:
         chantier_selected_name = "Aucun chantier enregistré"
         chantier_id = None
-        st.sidebar.warning("⚠️ Aucun chantier créé.")
+        col_ch.warning("⚠️ Aucun chantier créé. Veuillez en créer un dans l'onglet 'Gestion des Chantiers'.")
 
-    st.sidebar.markdown("---")
+    if col_btn.button("🚪 Déconnexion", use_container_width=True):
+        st.session_state.authenticated = False
+        st.rerun()
 
-    navigation = st.sidebar.radio("Navigation", [
-        "📊 Tableau de Bord", 
-        "🏗️ Gestion des Chantiers", 
-        "👷 Employés & Présences", 
-        "🚜 Engins & Carburant", 
-        "📦 Stocks & Matériaux",
-        "🧪 Labo & Contrôle Qualité",
-        "📝 Journal de Chantier (Météo)"
-    ])
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown('<div class="main-content">', unsafe_allow_html=True)
+    navigation = st.radio(
+        "📂 **Navigation de l'application :**",
+        [
+            "📊 Tableau de Bord", 
+            "🏗️ Gestion des Chantiers", 
+            "👷 Employés & Présences", 
+            "🚜 Engins & Carburant", 
+            "📦 Stocks & Matériaux",
+            "🧪 Labo & Contrôle Qualité",
+            "📝 Journal de Chantier (Météo)"
+        ],
+        horizontal=True
+    )
+
+    st.markdown("<hr style='margin: 20px 0; border: none; border-top: 1px solid #cbd5e1;'>", unsafe_allow_html=True)
 
     # 1. GESTION DES CHANTIERS
     if navigation == "🏗️ Gestion des Chantiers":
@@ -418,7 +433,7 @@ else:
                 st.rerun()
 
         st.markdown("---")
-        st.subheader("📋 Liste des Chantiers Enregistrés")
+        st.subheader("📋 Liste des Chantiers Enregistrés & Répartition")
         df_all_chantiers = pd.read_sql_query("""
             SELECT id AS ID, nom_chantier AS 'Nom du Chantier', localisation AS 'Localisation', 
                    maitre_ouvrage AS 'Client', budget AS 'Budget (FCFA)', 
@@ -426,18 +441,13 @@ else:
             FROM chantiers
         """, conn)
         st.dataframe(df_all_chantiers, use_container_width=True)
-        
-        # Diagramme de répartition des budgets par chantier
-        if not df_all_chantiers.empty:
-            st.markdown("### 📊 Analyse des Budgets par Chantier")
-            chart_chantiers = alt.Chart(df_all_chantiers).mark_bar(color="#0b5fa5").encode(
-                x=alt.X('Nom du Chantier:N', sort='-y'),
-                y=alt.Y('Budget (FCFA):Q', title='Budget (FCFA)'),
-                tooltip=['Nom du Chantier', 'Budget (FCFA)', 'Statut']
-            ).properties(height=300)
-            st.altair_chart(chart_chantiers, use_container_width=True)
 
-    # 2. TABLEAU DE BORD (Avec Diagramme Circulaire et Courbe)
+        if not df_all_chantiers.empty:
+            st.markdown("### 📈 Diagramme Fonctionnel : Budgets par Chantier")
+            chart_data = df_all_chantiers.set_index('Nom du Chantier')['Budget (FCFA)']
+            st.bar_chart(chart_data)
+
+    # 2. TABLEAU DE BORD
     elif navigation == "📊 Tableau de Bord":
         st.header(f"📊 Tableau de Bord - {chantier_selected_name}")
         
@@ -466,40 +476,25 @@ else:
             col4.metric("👷 Effectif Actif", f"{len(df_emp)} Employés")
 
             st.markdown("---")
-            
-            # --- DIAGRAMMES DU TABLEAU DE BORD ---
             col_chart1, col_chart2 = st.columns(2)
-            
+
             with col_chart1:
-                st.subheader("🍩 Répartition Circulaire des Dépenses")
+                st.subheader("🔵 Répartition Circulaire des Dépenses")
                 df_depenses = pd.DataFrame({
-                    'Catégorie': ['Salaires Personnel', 'Carburant Engins', 'Matériaux Stock'],
-                    'Montant': [total_salaires, total_carburant, total_materiaux]
+                    "Catégorie": ["Salaires", "Carburant Engins", "Matériaux Stock"],
+                    "Montant (FCFA)": [total_salaires, total_carburant, total_materiaux]
                 })
-                if df_depenses['Montant'].sum() > 0:
-                    # Diagramme circulaire (Donut chart)
-                    pie_chart = alt.Chart(df_depenses).mark_arc(innerRadius=60).encode(
-                        theta=alt.Theta(field="Montant", type="quantitative"),
-                        color=alt.Color(field="Catégorie", type="nominal", scale=alt.Scale(scheme='tableau10')),
-                        tooltip=['Catégorie', alt.Tooltip('Montant:Q', format=',.0f')]
-                    ).properties(height=300)
-                    st.altair_chart(pie_chart, use_container_width=True)
-                else:
-                    st.info("Aucune dépense enregistrée pour afficher le graphique circulaire.")
+                # Affichage sous forme de diagramme en barres / graphique équivalent interactif ou tableau trié
+                st.bar_chart(df_depenses.set_index("Catégorie"))
 
             with col_chart2:
-                st.subheader("📈 Courbe d'Évolution de la Pluviométrie")
-                df_pluie = pd.read_sql_query("SELECT date_jour, hauteur_pluie_mm FROM journal_chantier WHERE chantier_id = ? ORDER BY date_jour", conn, params=(chantier_id,))
-                if not df_pluie.empty:
-                    # Courbe (Line chart)
-                    line_chart = alt.Chart(df_pluie).mark_line(point=True, color="#f39c12").encode(
-                        x=alt.X('date_jour:T', title='Date'),
-                        y=alt.Y('hauteur_pluie_mm:Q', title='Hauteur Pluie (mm)'),
-                        tooltip=['date_jour', 'hauteur_pluie_mm']
-                    ).properties(height=300)
-                    st.altair_chart(line_chart, use_container_width=True)
-                else:
-                    st.info("Aucune donnée météo enregistrée pour tracer la courbe.")
+                st.subheader("📈 Courbe Récapitulative du Suivi Financier")
+                df_suivi = pd.DataFrame({
+                    "Indicateur": ["Budget Total", "Dépenses Globales", "Solde Restant"],
+                    "Montant": [budget_total, cout_global, solde_restant]
+                })
+                st.line_chart(df_suivi.set_index("Indicateur"))
+
         else:
             st.warning("Veuillez créer un chantier dans le menu 'Gestion des Chantiers'.")
 
@@ -527,14 +522,10 @@ else:
 
             if not df_emp.empty:
                 st.markdown("### 📊 Répartition des Salaires par Poste")
-                chart_emp = alt.Chart(df_emp).mark_bar(color="#1e3c72").encode(
-    x=alt.X('Poste:N', sort='-y'),
-    y=alt.Y('sum(Salaire (FCFA)):Q', title='Total Salaire (FCFA)'),
-    tooltip=['Poste', alt.Tooltip('sum(Salaire (FCFA)):Q', format=',.0f')]
-).properties(height=280)
-                st.altair_chart(chart_emp, use_container_width=True)
+                df_postes = df_emp.groupby("Poste")["Salaire (FCFA)"].sum()
+                st.bar_chart(df_postes)
         else:
-            st.warning("Veuillez sélectionner un chantier.")
+            st.warning("Veuillez d'abord sélectionner ou créer un chantier dans 'Gestion des Chantiers'.")
 
     # 4. ENGINS
     elif navigation == "🚜 Engins & Carburant":
@@ -561,15 +552,10 @@ else:
             st.dataframe(df_eng, use_container_width=True)
 
             if not df_eng.empty:
-                st.markdown("### 📊 Coût du Carburant par Engin")
-                chart_eng = alt.Chart(df_eng).mark_bar(color="#e67e22").encode(
-                    x=alt.X('Engin:N', sort='-y'),
-                    y=alt.Y('Carburant (FCFA):Q'),
-                    tooltip=['Engin', 'Immat', alt.Tooltip('Carburant (FCFA):Q', format=',.0f')]
-                ).properties(height=280)
-                st.altair_chart(chart_eng, use_container_width=True)
+                st.markdown("### 📊 Répartition du Coût Carburant par Engin")
+                st.bar_chart(df_eng.set_index("Engin")["Carburant (FCFA)"])
         else:
-            st.warning("Veuillez sélectionner un chantier.")
+            st.warning("Veuillez d'abord sélectionner ou créer un chantier.")
 
     # 5. STOCKS
     elif navigation == "📦 Stocks & Matériaux":
@@ -595,15 +581,10 @@ else:
             st.dataframe(df_st, use_container_width=True)
 
             if not df_st.empty:
-                st.markdown("### 📊 Niveaux des Stocks Actuels")
-                chart_st = alt.Chart(df_st).mark_bar(color="#27ae60").encode(
-                    x=alt.X('Matériau:N', sort='-y'),
-                    y=alt.Y('Quantité:Q'),
-                    tooltip=['Matériau', 'Quantité', 'Seuil Alerte']
-                ).properties(height=280)
-                st.altair_chart(chart_st, use_container_width=True)
+                st.markdown("### 📊 Répartition des Quantités par Matériau")
+                st.bar_chart(df_st.set_index("Matériau")["Quantité"])
         else:
-            st.warning("Veuillez sélectionner un chantier.")
+            st.warning("Veuillez d'abord sélectionner ou créer un chantier.")
 
     # 6. LABO & CONTRÔLE QUALITÉ
     elif navigation == "🧪 Labo & Contrôle Qualité":
@@ -640,19 +621,12 @@ else:
             st.dataframe(df_labo, use_container_width=True)
 
             if not df_labo.empty:
-                st.markdown("### 📊 Évolution des Résistances du Béton (MPa)")
-                df_melted = df_labo.melt(id_vars=['Élément'], value_vars=['R 7j (MPa)', 'R 28j (MPa)'], var_name='Échéance', value_name='Résistance (MPa)')
-                chart_labo = alt.Chart(df_melted).mark_bar().encode(
-                    x=alt.X('Élément:N'),
-                    y=alt.Y('Résistance (MPa):Q'),
-                    color='Échéance:N',
-                    tooltip=['Élément', 'Échéance', 'Résistance (MPa)']
-                ).properties(height=280)
-                st.altair_chart(chart_labo, use_container_width=True)
+                st.markdown("### 📊 Évolution des Résistances (7j vs 28j)")
+                st.line_chart(df_labo.set_index("Élément")[["R 7j (MPa)", "R 28j (MPa)"]])
         else:
             st.warning("Veuillez sélectionner un chantier.")
 
-    # 7. JOURNAL DE CHANTIER (MÉTÉO)
+    # 7. JOURNAL DE CHANTIER & MÉTÉO
     elif navigation == "📝 Journal de Chantier (Météo)":
         st.header(f"📝 Journal Quotidien & Météo : {chantier_selected_name}")
         
@@ -671,7 +645,7 @@ else:
                     cursor.execute("""
                         INSERT INTO journal_chantier (chantier_id, date_jour, meteo, hauteur_pluie_mm, incidents, travaux_realises)
                         VALUES (?, ?, ?, ?, ?, ?)
-                    """, (chantier_id, str(date_j), meteo, pluie, incidents, travaux))
+                    """, (chantier_id, str(date_jour if 'date_jour' in locals() else str(date_j)), meteo, pluie, incidents, travaux))
                     conn.commit()
                     st.success("Rapport journalier enregistré avec succès !")
                     st.rerun()
@@ -684,13 +658,8 @@ else:
             st.dataframe(df_jour, use_container_width=True)
 
             if not df_jour.empty:
-                st.markdown("### 📊 Historique de la Pluviométrie Journalière")
-                chart_meteo = alt.Chart(df_jour).mark_line(point=True, color="#2980b9").encode(
-                    x=alt.X('Date:T'),
-                    y=alt.Y('Pluie (mm):Q'),
-                    tooltip=['Date', 'Météo', 'Pluie (mm)']
-                ).properties(height=280)
-                st.altair_chart(chart_meteo, use_container_width=True)
+                st.markdown("### 📊 Hauteur de Pluie Cumulée par Date")
+                st.bar_chart(df_jour.set_index("Date")["Pluie (mm)"])
         else:
             st.warning("Veuillez sélectionner un chantier.")
 
