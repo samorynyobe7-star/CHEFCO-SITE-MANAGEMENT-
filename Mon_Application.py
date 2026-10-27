@@ -314,26 +314,33 @@ if not st.session_state.authenticated:
                     conn = get_connection()
                     cursor = conn.cursor()
                     
-                    cursor.execute("""
-                        SELECT id FROM utilisateurs 
-                        WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)
-                    """, (nom_input, prenom_input))
-                    user_exist = cursor.fetchone()
-                    
-                    if not user_exist:
+                    try:
                         cursor.execute("""
-                            INSERT INTO utilisateurs (nom, prenom, poste)
-                            VALUES (?, ?, ?)
-                        """, (nom_input, prenom_input, poste_input))
+                            SELECT id FROM utilisateurs 
+                            WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)
+                        """, (nom_input, prenom_input))
+                        user_exist = cursor.fetchone()
+                        
+                        if not user_exist:
+                            cursor.execute("""
+                                INSERT INTO utilisateurs (nom, prenom, poste)
+                                VALUES (?, ?, ?)
+                            """, (nom_input, prenom_input, poste_input))
+                        else:
+                            cursor.execute("""
+                                UPDATE utilisateurs SET poste = ? 
+                                WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)
+                            """, (poste_input, nom_input, prenom_input))
                         conn.commit()
-                    else:
+                    except sqlite3.IntegrityError:
+                        # Gestion de rattrapage en cas de conflit d'intégrité
                         cursor.execute("""
                             UPDATE utilisateurs SET poste = ? 
                             WHERE LOWER(nom) = LOWER(?) AND LOWER(prenom) = LOWER(?)
                         """, (poste_input, nom_input, prenom_input))
                         conn.commit()
-                        
-                    conn.close()
+                    finally:
+                        conn.close()
                     
                     st.session_state.authenticated = True
                     st.session_state.username = f"{prenom_input} {nom_input}"
@@ -484,7 +491,6 @@ else:
                     "Catégorie": ["Salaires", "Carburant Engins", "Matériaux Stock"],
                     "Montant (FCFA)": [total_salaires, total_carburant, total_materiaux]
                 })
-                # Affichage sous forme de diagramme en barres / graphique équivalent interactif ou tableau trié
                 st.bar_chart(df_depenses.set_index("Catégorie"))
 
             with col_chart2:
@@ -645,7 +651,7 @@ else:
                     cursor.execute("""
                         INSERT INTO journal_chantier (chantier_id, date_jour, meteo, hauteur_pluie_mm, incidents, travaux_realises)
                         VALUES (?, ?, ?, ?, ?, ?)
-                    """, (chantier_id, str(date_jour if 'date_jour' in locals() else str(date_j)), meteo, pluie, incidents, travaux))
+                    """, (chantier_id, str(date_j), meteo, pluie, incidents, travaux))
                     conn.commit()
                     st.success("Rapport journalier enregistré avec succès !")
                     st.rerun()
